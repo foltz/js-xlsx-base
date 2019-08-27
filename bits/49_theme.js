@@ -102,8 +102,8 @@ function parse_theme_xml(data/*:string*/, opts) {
 }
 
 function write_theme(Themes, opts)/*:string*/ {
-	return _HEAD_write_theme(Themes, opts);
-	//return _MERGE_write_theme(Themes, opts);
+	//return _HEAD_write_theme(Themes, opts);
+	return _MERGE_write_theme(Themes, opts);
 }
 
 function _HEAD_write_theme(Themes, opts)/*:string*/ {
