@@ -29,5 +29,14 @@ tmp
 *.htm
 *.html
 *.sheetjs
+<<<<<<< HEAD
 *.exe
 *.img
+
+
+lab/
+test_files
+example.js
+example2.js
+.idea
+

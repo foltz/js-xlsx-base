@@ -12,6 +12,9 @@ function write_cfb_ctr(cfb/*:CFBContainer*/, o/*:WriteOpts*/)/*:any*/ {
 /*global encrypt_agile */
 /*:: declare var encrypt_agile:any; */
 function write_zip_type(wb/*:Workbook*/, opts/*:?WriteOpts*/)/*:any*/ {
+	return _MERGE_write_zip_type(wb, opts);
+}
+function _HEAD_write_zip_type(wb/*:Workbook*/, opts/*:?WriteOpts*/)/*:any*/ {
 	var o = opts||{};
 	var z = write_zip(wb, o);
 	var oopts = {};
@@ -29,6 +32,24 @@ function write_zip_type(wb/*:Workbook*/, opts/*:?WriteOpts*/)/*:any*/ {
 	if(o.password && typeof encrypt_agile !== 'undefined') return write_cfb_ctr(encrypt_agile(out, o.password), o);
 	if(o.type === "file") return write_dl(o.file, out);
 	return o.type == "string" ? utf8read(out) : out;
+}
+
+
+	function _MERGE_write_zip_type(wb/*:Workbook*/, opts/*:?WriteOpts*/)/*:any*/ {
+		var o = opts||{};
+		style_builder  = new StyleBuilder(opts);
+		var z = write_zip(wb, o);
+		switch(o.type) {
+			case "base64": return z.generate({type:"base64"});
+			case "binary": return z.generate({type:"string"});
+			case "buffer": return z.generate({type:"nodebuffer"});
+			case "file": return _fs.writeFileSync(o.file, z.generate({type:"nodebuffer"}));
+			default: throw new Error("Unrecognized type " + o.type);
+		}
+		var out = z.FullPaths ? CFB.write(z, {fileType:"zip", type: {"nodebuffer": "buffer", "string": "binary"}[oopts.type] || oopts.type}) : z.generate(oopts);
+		if(o.password && typeof encrypt_agile !== 'undefined') return write_cfb_ctr(encrypt_agile(out, o.password), o);
+		if(o.type === "file") return write_dl(o.file, out);
+		return o.type == "string" ? utf8read(out) : out;
 }
 
 function write_cfb_type(wb/*:Workbook*/, opts/*:?WriteOpts*/)/*:any*/ {
@@ -136,6 +157,7 @@ function resolve_book_type(o/*:WriteFileOpts*/) {
 
 function writeFileSync(wb/*:Workbook*/, filename/*:string*/, opts/*:?WriteFileOpts*/) {
 	var o = opts||{}; o.type = 'file';
+
 	o.file = filename;
 	resolve_book_type(o);
 	return writeSync(wb, o);

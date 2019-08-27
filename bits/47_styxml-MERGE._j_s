@@ -451,6 +451,28 @@ RELS.STY = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/
 
 
 function write_sty_xml(wb/*:Workbook*/, opts)/*:string*/ {
+	// - TODO: determine which version to use:
+	//return _HEAD_write_sty_cml(wb, opts);
+	return _MERGE_write_sty_cml(wb, opts);
+}
+
+function _HEAD_write_sty_xml(wb/*:Workbook*/, opts)/*:string*/ {
+	var o = [XML_HEADER, STYLES_XML_ROOT], w;
+	if(wb.SSF && (w = write_numFmts(wb.SSF)) != null) o[o.length] = w;
+	o[o.length] = ('<fonts count="1"><font><sz val="12"/><color theme="1"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts>');
+	o[o.length] = ('<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>');
+	o[o.length] = ('<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>');
+	o[o.length] = ('<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>');
+	if((w = write_cellXfs(opts.cellXfs))) o[o.length] = (w);
+	o[o.length] = ('<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>');
+	o[o.length] = ('<dxfs count="0"/>');
+	o[o.length] = ('<tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleMedium4"/>');
+
+	if(o.length>2){ o[o.length] = ('</styleSheet>'); o[1]=o[1].replace("/>",">"); }
+	return o.join("");
+
+function _MERGE_write_sty_xml(wb, opts) {
+
   if (typeof style_builder != 'undefined' && typeof 'require' != 'undefined') {
     return style_builder.toXml();
   }
@@ -472,4 +494,3 @@ function write_sty_xml(wb/*:Workbook*/, opts)/*:string*/ {
   }
   return o.join("");
 }
-

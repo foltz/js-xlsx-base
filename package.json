@@ -1,22 +1,9 @@
 {
 	"name": "xlsx",
-	"version": "0.15.1",
+	"version": "0.8.20",
 	"author": "sheetjs",
-	"description": "SheetJS Spreadsheet data parser and writer",
-	"keywords": [
-		"excel",
-		"xls",
-		"xlsx",
-		"xlsb",
-		"xlsm",
-		"ods",
-		"csv",
-		"dbf",
-		"dif",
-		"sylk",
-		"office",
-		"spreadsheet"
-	],
+	"description": "Excel (XLSB/XLSX/XLSM/XLS/XML) and ODS spreadsheet parser and writer (extended to enable read/write of cell formats with xlsx files)",
+	"keywords": [ "excel", "xls", "xlsx", "xlsb", "xlsm", "ods", "office", "spreadsheet" ],
 	"bin": {
 		"xlsx": "./bin/xlsx.njs"
 	},

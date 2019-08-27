@@ -26,6 +26,11 @@ function getdata(data) { return (data && data.name.slice(-4) === ".bin") ? getda
 /* Part 2 Section 10.1.2 "Mapping Content Types" Names are case-insensitive */
 /* OASIS does not comment on filename case sensitivity */
 function safegetzipfile(zip, file/*:string*/) {
+	return _HEAD_safegetzipfile(zip, file);
+	//return _MERGE_safegetzipfile(zip, file);
+}
+
+function _HEAD_safegetzipfile(zip, file/*:string*/) {
 	var k = zip.FullPaths || keys(zip.files);
 	var f = file.toLowerCase(), g = f.replace(/\//g,'\\');
 	for(var i=0; i<k.length; ++i) {
@@ -34,6 +39,21 @@ function safegetzipfile(zip, file/*:string*/) {
 	}
 	return null;
 }
+
+function _MERGE_safegetzipfile(zip, file) {
+	var f = file; if(zip.files[f]) return zip.files[f];
+
+	var lowerCaseFiles = {};
+	for (var key in zip.files) {
+		lowerCaseFiles[key.toLowerCase()] = zip.files[key];
+	}
+
+	f = file.toLowerCase(); if(lowerCaseFiles[f]) return lowerCaseFiles[f];
+	f = f.replace(/\//g,'\\'); if(lowerCaseFiles[f]) return lowerCaseFiles[f];
+
+	return null;
+}
+
 
 function getzipfile(zip, file/*:string*/) {
 	var o = safegetzipfile(zip, file);
