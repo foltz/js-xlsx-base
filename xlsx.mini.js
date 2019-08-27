@@ -4,7 +4,7 @@
 /*global global, exports, module, require:false, process:false, Buffer:false, ArrayBuffer:false */
 var XLSX = {};
 function make_xlsx_lib(XLSX){
-XLSX.version = '0.15.1';
+XLSX.version = '0.8.20';
 var current_codepage = 1200, current_ansi = 1252;
 
 var VALID_ANSI = [ 874, 932, 936, 949, 950 ];
@@ -4286,6 +4286,16 @@ function cp_doit(f, g, h, o, p) {
 }
 
 function write_core_props(cp, _opts) {
+
+	// - TODO: determine which option...
+	//return _HEAD_write_core_props(cp, _opts);
+	return _MERGE_write_core_props(cp, _opts);
+}
+
+
+
+
+function _HEAD_write_core_props(cp, _opts) {
 	var opts = _opts || {};
 	var o = [XML_HEADER, CORE_PROPS_XML_ROOT], p = {};
 	if(!cp && !opts.Props) return o.join("");
@@ -4302,6 +4312,29 @@ function write_core_props(cp, _opts) {
 		else if(v === false) v = "0";
 		else if(typeof v == "number") v = String(v);
 		if(v != null) cp_doit(f[0], v, null, o, p);
+	}
+	if(o.length>2){ o[o.length] = ('</cp:coreProperties>'); o[1]=o[1].replace("/>",">"); }
+	return o.join("");
+}
+
+
+function _MERGE_write_core_props(cp, _opts) {
+	var opts = _opts || {};
+	var o = [XML_HEADER, CORE_PROPS_XML_ROOT], p = {};
+
+	if (opts && opts.Props) {
+		if (opts.Props.title) o[o.length]       = '<dc:title>'       + opts.Props.title        + '</dc:title>';
+		if (opts.Props.subject) o[o.length]     = '<dc:subject>'     + opts.Props.subject      + '</dc:subject>';
+		if (opts.Props.creator) o[o.length]     = '<dc:creator>'     + opts.Props.creator      + '</dc:creator>';
+		if (opts.Props.keywords) o[o.length]    = '<cp:keywords>'    + opts.Props.keywords      + '</cp:keywords>';
+		if (opts.Props.description) o[o.length] = '<dc:description>' + opts.Props.description  + '</dc:description>';
+	}
+	if(cp) {
+
+		if(cp.CreatedDate != null) cp_doit("dcterms:created", typeof cp.CreatedDate === "string" ? cp.CreatedDate : write_w3cdtf(cp.CreatedDate, opts.WTF), {"xsi:type":"dcterms:W3CDTF"}, o, p);
+		if(cp.ModifiedDate != null) cp_doit("dcterms:modified", typeof cp.ModifiedDate === "string" ? cp.ModifiedDate : write_w3cdtf(cp.ModifiedDate, opts.WTF), {"xsi:type":"dcterms:W3CDTF"}, o, p);
+
+		for(var i = 0; i != CORE_PROPS.length; ++i) { var f = CORE_PROPS[i]; cp_doit(f[0], cp[f[1]], null, o, p); }
 	}
 	if(o.length>2){ o[o.length] = ('</cp:coreProperties>'); o[1]=o[1].replace("/>",">"); }
 	return o.join("");
@@ -4900,352 +4933,406 @@ function parse_borders(t, styles, themes, opts) {
 }
 
 /* 18.8.21 fills CT_Fills */
-function parse_fills(t, styles, themes, opts) {
-	styles.Fills = [];
-	var fill = {};
-	var pass = false;
-	t[0].match(tagregex).forEach(function(x) {
-		var y = parsexmltag(x);
-		switch(strip_ns(y[0])) {
-			case '<fills': case '<fills>': case '</fills>': break;
+function parse_fills(t, opts) {
+  styles.Fills = [];
+  var fill = {};
+  t[0].match(tagregex).forEach(function (x) {
+    var y = parsexmltag(x);
+    switch (y[0]) {
+      case '<fills':
+      case '<fills>':
+      case '</fills>':
+        break;
 
-			/* 18.8.20 fill CT_Fill */
-			case '<fill>': case '<fill': case '<fill/>':
-				fill = {}; styles.Fills.push(fill); break;
-			case '</fill>': break;
+      /* 18.8.20 fill CT_Fill */
+      case '<fill>':
+        break;
+      case '</fill>':
+        styles.Fills.push(fill);
+        fill = {};
+        break;
 
-			/* 18.8.24 gradientFill CT_GradientFill */
-			case '<gradientFill>': break;
-			case '<gradientFill':
-			case '</gradientFill>': styles.Fills.push(fill); fill = {}; break;
+      /* 18.8.32 patternFill CT_PatternFill */
+      case '<patternFill':
+        if (y.patternType) fill.patternType = y.patternType;
+        break;
+      case '<patternFill/>':
+      case '</patternFill>':
+        break;
 
-			/* 18.8.32 patternFill CT_PatternFill */
-			case '<patternFill': case '<patternFill>':
-				if(y.patternType) fill.patternType = y.patternType;
-				break;
-			case '<patternFill/>': case '</patternFill>': break;
+      /* 18.8.3 bgColor CT_Color */
+      case '<bgColor':
+        if (!fill.bgColor) fill.bgColor = {};
+        if (y.indexed) fill.bgColor.indexed = parseInt(y.indexed, 10);
+        if (y.theme) fill.bgColor.theme = parseInt(y.theme, 10);
+        if (y.tint) fill.bgColor.tint = parseFloat(y.tint);
 
-			/* 18.8.3 bgColor CT_Color */
-			case '<bgColor':
-				if(!fill.bgColor) fill.bgColor = {};
-				if(y.indexed) fill.bgColor.indexed = parseInt(y.indexed, 10);
-				if(y.theme) fill.bgColor.theme = parseInt(y.theme, 10);
-				if(y.tint) fill.bgColor.tint = parseFloat(y.tint);
-				/* Excel uses ARGB strings */
-				if(y.rgb) fill.bgColor.rgb = y.rgb.slice(-6);
-				break;
-			case '<bgColor/>': case '</bgColor>': break;
 
-			/* 18.8.19 fgColor CT_Color */
-			case '<fgColor':
-				if(!fill.fgColor) fill.fgColor = {};
-				if(y.theme) fill.fgColor.theme = parseInt(y.theme, 10);
-				if(y.tint) fill.fgColor.tint = parseFloat(y.tint);
-				/* Excel uses ARGB strings */
-				if(y.rgb) fill.fgColor.rgb = y.rgb.slice(-6);
-				break;
-			case '<fgColor/>': case '</fgColor>': break;
+        if (y.theme && themes.themeElements && themes.themeElements.clrScheme) {
+          fill.bgColor.rgb = rgb_tint(themes.themeElements.clrScheme[fill.bgColor.theme].rgb, fill.bgColor.tint || 0);
+          if (opts.WTF) fill.bgColor.raw_rgb = rgb_tint(themes.themeElements.clrScheme[fill.bgColor.theme].rgb,0);
+        }
+        /* Excel uses ARGB strings */
+        if (y.rgb) fill.bgColor.rgb = y.rgb;//.substring(y.rgb.length - 6);
+        break;
+      case '<bgColor/>':
+      case '</bgColor>':
+        break;
 
-			/* 18.8.38 stop CT_GradientStop */
-			case '<stop': case '<stop/>': break;
-			case '</stop>': break;
+      /* 18.8.19 fgColor CT_Color */
+      case '<fgColor':
+        if (!fill.fgColor) fill.fgColor = {};
+        if (y.theme) fill.fgColor.theme = parseInt(y.theme, 10);
+        if (y.tint) fill.fgColor.tint = parseFloat(y.tint);
 
-			/* 18.8.? color CT_Color */
-			case '<color': case '<color/>': break;
-			case '</color>': break;
+        if (y.theme && themes.themeElements && themes.themeElements.clrScheme) {
+          fill.fgColor.rgb = rgb_tint(themes.themeElements.clrScheme[fill.fgColor.theme].rgb, fill.fgColor.tint || 0);
+          if (opts.WTF) fill.fgColor.raw_rgb = rgb_tint(themes.themeElements.clrScheme[fill.fgColor.theme].rgb,0);
+        }
 
-			/* 18.2.10 extLst CT_ExtensionList ? */
-			case '<extLst': case '<extLst>': case '</extLst>': break;
-			case '<ext': pass = true; break;
-			case '</ext>': pass = false; break;
-			default: if(opts && opts.WTF) {
-				if(!pass) throw new Error('unrecognized ' + y[0] + ' in fills');
-			}
-		}
-	});
+        /* Excel uses ARGB strings */
+        if (y.rgb) fill.fgColor.rgb = y.rgb;//.substring(y.rgb.length - 6);
+        break;
+      case '<fgColor/>':
+      case '</fgColor>':
+        break;
+
+      default:
+        if (opts.WTF) throw 'unrecognized ' + y[0] + ' in fills';
+    }
+  });
 }
 
-/* 18.8.23 fonts CT_Fonts */
-function parse_fonts(t, styles, themes, opts) {
-	styles.Fonts = [];
-	var font = {};
-	var pass = false;
-	t[0].match(tagregex).forEach(function(x) {
-		var y = parsexmltag(x);
-		switch(strip_ns(y[0])) {
-			case '<fonts': case '<fonts>': case '</fonts>': break;
+function parse_fonts(t, opts) {
+  styles.Fonts = [];
+  var font = {};
+  t[0].match(tagregex).forEach(function (x) {
+    var y = parsexmltag(x);
+    switch (y[0]) {
 
-			/* 18.8.22 font CT_Font */
-			case '<font': case '<font>': break;
-			case '</font>': case '<font/>':
-				styles.Fonts.push(font);
-				font = {};
-				break;
+      case '<fonts':
+      case  '<fonts>':
+      case '</fonts>':
+        break;
+      case '<font':
+        break;
+      case '</font>':
+        styles.Fonts.push(font);
+        ;
+        font = {};
+        break;
 
-			/* 18.8.29 name CT_FontName */
-			case '<name': if(y.val) font.name = y.val; break;
-			case '<name/>': case '</name>': break;
+      case '<name':
+        if (y.val) font.name = y.val;
+        break;
+      case '<name/>':
+      case '</name>':
+        break;
 
-			/* 18.8.2  b CT_BooleanProperty */
-			case '<b': font.bold = y.val ? parsexmlbool(y.val) : 1; break;
-			case '<b/>': font.bold = 1; break;
 
-			/* 18.8.26 i CT_BooleanProperty */
-			case '<i': font.italic = y.val ? parsexmlbool(y.val) : 1; break;
-			case '<i/>': font.italic = 1; break;
+      case '<b/>':
+        font.bold = true;
+        break;
+      case '<u/>':
+        font.underline = true;
+        break;
+      case '<i/>':
+        font.italic = true;
+        break;
+      case '<strike/>':
+        font.strike = true;
+        break;
+      case '<outline/>':
+        font.outline = true;
+        break;
+      case '<shadow/>':
+        font.shadow = true;
+        break;
 
-			/* 18.4.13 u CT_UnderlineProperty */
-			case '<u':
-				switch(y.val) {
-					case "none": font.underline = 0x00; break;
-					case "single": font.underline = 0x01; break;
-					case "double": font.underline = 0x02; break;
-					case "singleAccounting": font.underline = 0x21; break;
-					case "doubleAccounting": font.underline = 0x22; break;
-				} break;
-			case '<u/>': font.underline = 1; break;
 
-			/* 18.4.10 strike CT_BooleanProperty */
-			case '<strike': font.strike = y.val ? parsexmlbool(y.val) : 1; break;
-			case '<strike/>': font.strike = 1; break;
+      case '<sz':
+        if (y.val) font.sz = y.val;
+        break;
+      case '<sz/>':
+      case '</sz>':
+        break;
 
-			/* 18.4.2  outline CT_BooleanProperty */
-			case '<outline': font.outline = y.val ? parsexmlbool(y.val) : 1; break;
-			case '<outline/>': font.outline = 1; break;
+      case '<vertAlign':
+        if (y.val) font.vertAlign = y.val;
+        break;
+      case '<vertAlign/>':
+      case '</vertAlign>':
+        break;
 
-			/* 18.8.36 shadow CT_BooleanProperty */
-			case '<shadow': font.shadow = y.val ? parsexmlbool(y.val) : 1; break;
-			case '<shadow/>': font.shadow = 1; break;
 
-			/* 18.8.12 condense CT_BooleanProperty */
-			case '<condense': font.condense = y.val ? parsexmlbool(y.val) : 1; break;
-			case '<condense/>': font.condense = 1; break;
+      case '<color':
+        if (!font.color) font.color = {};
+        if (y.theme) font.color.theme = y.theme;
+        if (y.tint) font.color.tint = y.tint;
+        if (y.theme && themes.themeElements && themes.themeElements.clrScheme) {
+          font.color.rgb = rgb_tint(themes.themeElements.clrScheme[font.color.theme].rgb, font.color.tint || 0);
+        }
+        if (y.rgb) font.color.rgb = y.rgb;
+        break;
+      case '<color/>':
+      case '</color>':
+        break;
+    }
+  });
+}
 
-			/* 18.8.17 extend CT_BooleanProperty */
-			case '<extend': font.extend = y.val ? parsexmlbool(y.val) : 1; break;
-			case '<extend/>': font.extend = 1; break;
+function parse_borders(t, opts) {
+  styles.Borders = [];
+  var border = {}, sub_border = {};
+  t[0].match(tagregex).forEach(function (x) {
+    var y = parsexmltag(x);
+    switch (y[0]) {
+      case '<borders':
+      case  '<borders>':
+      case '</borders>':
+        break;
+      case '<border':
+      case '<border>':
+        border = {};
+        if (y.diagonalUp) { border.diagonalUp = y.diagonalUp; }
+        if (y.diagonalDown) { border.diagonalDown = y.diagonalDown; }
+        styles.Borders.push(border);
 
-			/* 18.4.11 sz CT_FontSize */
-			case '<sz': if(y.val) font.sz = +y.val; break;
-			case '<sz/>': case '</sz>': break;
+        break;
+        break;
+      case '</border>':
+        break;
 
-			/* 18.4.14 vertAlign CT_VerticalAlignFontProperty */
-			case '<vertAlign': if(y.val) font.vertAlign = y.val; break;
-			case '<vertAlign/>': case '</vertAlign>': break;
+      case '<left':
+        sub_border = border.left = {};
+        if (y.style) {
+          sub_border.style = y.style;
+        }
+        break;
+      case '<right':
+        sub_border = border.right = {};
+        if (y.style) {
+          sub_border.style = y.style;
+        }
+        break;
+      case '<top':
+        sub_border = border.top = {};
+        if (y.style) {
+          sub_border.style = y.style;
+        }
+        break;
+      case '<bottom':
+        sub_border = border.bottom = {};
+        if (y.style) {
+          sub_border.style = y.style;
+        }
+        break;
+      case '<diagonal':
+        sub_border = border.diagonal = {};
+        if (y.style) {
+          sub_border.style = y.style;
+        }
+        break;
 
-			/* 18.8.18 family CT_FontFamily */
-			case '<family': if(y.val) font.family = parseInt(y.val,10); break;
-			case '<family/>': case '</family>': break;
+      case '<color':
+        sub_border.color = {};
+        if (y.theme) sub_border.color.theme = y.theme;
+        if (y.theme && themes.themeElements && themes.themeElements.clrScheme) {
+          sub_border.color.rgb = rgb_tint(themes.themeElements.clrScheme[sub_border.color.theme].rgb, sub_border.color.tint || 0);
+        }
 
-			/* 18.8.35 scheme CT_FontScheme */
-			case '<scheme': if(y.val) font.scheme = y.val; break;
-			case '<scheme/>': case '</scheme>': break;
+        if (y.tint) sub_border.color.tint = y.tint;
+        if (y.rgb) sub_border.color.rgb = y.rgb;
+        if (y.auto) sub_border.color.auto = y.auto;
+        break;
+      case '<name/>':
+      case '</name>':
+        break;
+      default:
+        break;
+    }
+  });
 
-			/* 18.4.1 charset CT_IntProperty */
-			case '<charset':
-				if(y.val == '1') break;
-				y.codepage = CS2CP[parseInt(y.val, 10)];
-				break;
-
-			/* 18.?.? color CT_Color */
-			case '<color':
-				if(!font.color) font.color = {};
-				if(y.auto) font.color.auto = parsexmlbool(y.auto);
-
-				if(y.rgb) font.color.rgb = y.rgb.slice(-6);
-				else if(y.indexed) {
-					font.color.index = parseInt(y.indexed, 10);
-					var icv = XLSIcv[font.color.index];
-					if(font.color.index == 81) icv = XLSIcv[1];
-					if(!icv) throw new Error(x);
-					font.color.rgb = icv[0].toString(16) + icv[1].toString(16) + icv[2].toString(16);
-				} else if(y.theme) {
-					font.color.theme = parseInt(y.theme, 10);
-					if(y.tint) font.color.tint = parseFloat(y.tint);
-					if(y.theme && themes.themeElements && themes.themeElements.clrScheme) {
-						font.color.rgb = rgb_tint(themes.themeElements.clrScheme[font.color.theme].rgb, font.color.tint || 0);
-					}
-				}
-
-				break;
-			case '<color/>': case '</color>': break;
-
-			/* 18.2.10 extLst CT_ExtensionList ? */
-			case '<extLst': case '<extLst>': case '</extLst>': break;
-			case '<ext': pass = true; break;
-			case '</ext>': pass = false; break;
-			default: if(opts && opts.WTF) {
-				if(!pass) throw new Error('unrecognized ' + y[0] + ' in fonts');
-			}
-		}
-	});
 }
 
 /* 18.8.31 numFmts CT_NumFmts */
-function parse_numFmts(t, styles, opts) {
-	styles.NumberFmt = [];
-	var k/*Array<number>*/ = (keys(SSF._table));
-	for(var i=0; i < k.length; ++i) styles.NumberFmt[k[i]] = SSF._table[k[i]];
-	var m = t[0].match(tagregex);
-	if(!m) return;
-	for(i=0; i < m.length; ++i) {
-		var y = parsexmltag(m[i]);
-		switch(strip_ns(y[0])) {
-			case '<numFmts': case '</numFmts>': case '<numFmts/>': case '<numFmts>': break;
-			case '<numFmt': {
-				var f=unescapexml(utf8read(y.formatCode)), j=parseInt(y.numFmtId,10);
-				styles.NumberFmt[j] = f;
-				if(j>0) {
-					if(j > 0x188) {
-						for(j = 0x188; j > 0x3c; --j) if(styles.NumberFmt[j] == null) break;
-						styles.NumberFmt[j] = f;
-					}
-					SSF.load(f,j);
-				}
-			} break;
-			case '</numFmt>': break;
-			default: if(opts.WTF) throw new Error('unrecognized ' + y[0] + ' in numFmts');
-		}
-	}
+function parse_numFmts(t, opts) {
+  styles.NumberFmt = [];
+  var k = keys(SSF._table);
+  for (var i = 0; i < k.length; ++i) styles.NumberFmt[k[i]] = SSF._table[k[i]];
+  var m = t[0].match(tagregex);
+  for (i = 0; i < m.length; ++i) {
+    var y = parsexmltag(m[i]);
+    switch (y[0]) {
+      case '<numFmts':
+      case '</numFmts>':
+      case '<numFmts/>':
+      case '<numFmts>':
+        break;
+      case '<numFmt':
+      {
+        var f = unescapexml(utf8read(y.formatCode)), j = parseInt(y.numFmtId, 10);
+        styles.NumberFmt[j] = f;
+        if (j > 0) SSF.load(f, j);
+      }
+        break;
+      default:
+        if (opts.WTF) throw 'unrecognized ' + y[0] + ' in numFmts';
+    }
+  }
 }
 
-function write_numFmts(NF) {
-	var o = ["<numFmts>"];
-	[[5,8],[23,26],[41,44],[/*63*/50,/*66],[164,*/392]].forEach(function(r) {
-		for(var i = r[0]; i <= r[1]; ++i) if(NF[i] != null) o[o.length] = (writextag('numFmt',null,{numFmtId:i,formatCode:escapexml(NF[i])}));
-	});
-	if(o.length === 1) return "";
-	o[o.length] = ("</numFmts>");
-	o[0] = writextag('numFmts', null, { count:o.length-2 }).replace("/>", ">");
-	return o.join("");
+function write_numFmts(NF, opts) {
+  var o = ["<numFmts>"];
+  [
+    [5, 8],
+    [23, 26],
+    [41, 44],
+    [63, 66],
+    [164, 392]
+  ].forEach(function (r) {
+    for (var i = r[0]; i <= r[1]; ++i) if (NF[i] !== undefined) o[o.length] = (writextag('numFmt', null, {numFmtId: i, formatCode: escapexml(NF[i])}));
+  });
+  if (o.length === 1) return "";
+  o[o.length] = ("</numFmts>");
+  o[0] = writextag('numFmts', null, { count: o.length - 2 }).replace("/>", ">");
+  return o.join("");
 }
 
 /* 18.8.10 cellXfs CT_CellXfs */
-var cellXF_uint = [ "numFmtId", "fillId", "fontId", "borderId", "xfId" ];
-var cellXF_bool = [ "applyAlignment", "applyBorder", "applyFill", "applyFont", "applyNumberFormat", "applyProtection", "pivotButton", "quotePrefix" ];
-function parse_cellXfs(t, styles, opts) {
-	styles.CellXf = [];
-	var xf;
-	var pass = false;
-	t[0].match(tagregex).forEach(function(x) {
-		var y = parsexmltag(x), i = 0;
-		switch(strip_ns(y[0])) {
-			case '<cellXfs': case '<cellXfs>': case '<cellXfs/>': case '</cellXfs>': break;
+function parse_cellXfs(t, opts) {
+  styles.CellXf = [];
+  var xf;
+  t[0].match(tagregex).forEach(function (x) {
+    var y = parsexmltag(x);
+    switch (y[0]) {
+      case '<cellXfs':
+      case '<cellXfs>':
+      case '<cellXfs/>':
+      case '</cellXfs>':
+        break;
 
-			/* 18.8.45 xf CT_Xf */
-			case '<xf': case '<xf/>':
-				xf = y;
-				delete xf[0];
-				for(i = 0; i < cellXF_uint.length; ++i) if(xf[cellXF_uint[i]])
-					xf[cellXF_uint[i]] = parseInt(xf[cellXF_uint[i]], 10);
-				for(i = 0; i < cellXF_bool.length; ++i) if(xf[cellXF_bool[i]])
-					xf[cellXF_bool[i]] = parsexmlbool(xf[cellXF_bool[i]]);
-				if(xf.numFmtId > 0x188) {
-					for(i = 0x188; i > 0x3c; --i) if(styles.NumberFmt[xf.numFmtId] == styles.NumberFmt[i]) { xf.numFmtId = i; break; }
-				}
-				styles.CellXf.push(xf); break;
-			case '</xf>': break;
+      /* 18.8.45 xf CT_Xf */
+      case '<xf':
+          xf = y;
+          delete xf[0];
+        delete y[0];
+        if (xf.numFmtId) xf.numFmtId = parseInt(xf.numFmtId, 10);
+        if (xf.fillId) xf.fillId = parseInt(xf.fillId, 10);
+        styles.CellXf.push(xf);
+        break;
+      case '</xf>':
+        break;
 
-			/* 18.8.1 alignment CT_CellAlignment */
-			case '<alignment': case '<alignment/>':
-				var alignment = {};
-				if(y.vertical) alignment.vertical = y.vertical;
-				if(y.horizontal) alignment.horizontal = y.horizontal;
-				if(y.textRotation != null) alignment.textRotation = y.textRotation;
-				if(y.indent) alignment.indent = y.indent;
-				if(y.wrapText) alignment.wrapText = y.wrapText;
-				xf.alignment = alignment;
-				break;
-			case '</alignment>': break;
+      /* 18.8.1 alignment CT_CellAlignment */
+      case '<alignment':
+      case '<alignment/>':
+        var alignment = {}
+          if (y.vertical) { alignment.vertical = y.vertical;}
+          if (y.horizontal) { alignment.horizontal = y.horizontal;}
+          if (y.textRotation != undefined) { alignment.textRotation = y.textRotation; }
+          if (y.indent) { alignment.indent = y.indent; }
+          if (y.wrapText) { alignment.wrapText = y.wrapText; }
+          xf.alignment = alignment;
 
-			/* 18.8.33 protection CT_CellProtection */
-			case '<protection': case '</protection>': case '<protection/>': break;
+        break;
 
-			/* 18.2.10 extLst CT_ExtensionList ? */
-			case '<extLst': case '<extLst>': case '</extLst>': break;
-			case '<ext': pass = true; break;
-			case '</ext>': pass = false; break;
-			default: if(opts && opts.WTF) {
-				if(!pass) throw new Error('unrecognized ' + y[0] + ' in cellXfs');
-			}
-		}
-	});
+      /* 18.8.33 protection CT_CellProtection */
+      case '<protection':
+      case '</protection>':
+      case '<protection/>':
+        break;
+
+      case '<extLst':
+      case '</extLst>':
+        break;
+      case '<ext':
+        break;
+      default:
+        if (opts.WTF) throw 'unrecognized ' + y[0] + ' in cellXfs';
+    }
+  });
 }
 
 function write_cellXfs(cellXfs) {
-	var o = [];
-	o[o.length] = (writextag('cellXfs',null));
-	cellXfs.forEach(function(c) { o[o.length] = (writextag('xf', null, c)); });
-	o[o.length] = ("</cellXfs>");
-	if(o.length === 2) return "";
-	o[0] = writextag('cellXfs',null, {count:o.length-2}).replace("/>",">");
-	return o.join("");
+  var o = [];
+  o[o.length] = (writextag('cellXfs', null));
+  cellXfs.forEach(function (c) {
+    o[o.length] = (writextag('xf', null, c));
+  });
+  o[o.length] = ("</cellXfs>");
+  if (o.length === 2) return "";
+  o[0] = writextag('cellXfs', null, {count: o.length - 2}).replace("/>", ">");
+  return o.join("");
 }
 
 /* 18.8 Styles CT_Stylesheet*/
-var parse_sty_xml= (function make_pstyx() {
-var numFmtRegex = /<(?:\w+:)?numFmts([^>]*)>[\S\s]*?<\/(?:\w+:)?numFmts>/;
-var cellXfRegex = /<(?:\w+:)?cellXfs([^>]*)>[\S\s]*?<\/(?:\w+:)?cellXfs>/;
-var fillsRegex = /<(?:\w+:)?fills([^>]*)>[\S\s]*?<\/(?:\w+:)?fills>/;
-var fontsRegex = /<(?:\w+:)?fonts([^>]*)>[\S\s]*?<\/(?:\w+:)?fonts>/;
-var bordersRegex = /<(?:\w+:)?borders([^>]*)>[\S\s]*?<\/(?:\w+:)?borders>/;
+var parse_sty_xml = (function make_pstyx() {
+  var numFmtRegex = /<numFmts([^>]*)>.*<\/numFmts>/;
+  var cellXfRegex = /<cellXfs([^>]*)>.*<\/cellXfs>/;
+  var fillsRegex = /<fills([^>]*)>.*<\/fills>/;
+  var bordersRegex = /<borders([^>]*)>.*<\/borders>/;
 
-return function parse_sty_xml(data, themes, opts) {
-	var styles = {};
-	if(!data) return styles;
-	data = data.replace(/<!--([\s\S]*?)-->/mg,"").replace(/<!DOCTYPE[^\[]*\[[^\]]*\]>/gm,"");
-	/* 18.8.39 styleSheet CT_Stylesheet */
-	var t;
+  return function parse_sty_xml(data, opts) {
+    /* 18.8.39 styleSheet CT_Stylesheet */
+    var t;
 
-	/* 18.8.31 numFmts CT_NumFmts ? */
-	if((t=data.match(numFmtRegex))) parse_numFmts(t, styles, opts);
+    /* numFmts CT_NumFmts ? */
+    if ((t = data.match(numFmtRegex))) parse_numFmts(t, opts);
 
-	/* 18.8.23 fonts CT_Fonts ? */
-	if((t=data.match(fontsRegex))) parse_fonts(t, styles, themes, opts);
+    /* fonts CT_Fonts ? */
+    if ((t = data.match(/<fonts([^>]*)>.*<\/fonts>/))) parse_fonts(t, opts)
 
-	/* 18.8.21 fills CT_Fills ? */
-	if((t=data.match(fillsRegex))) parse_fills(t, styles, themes, opts);
+    /* fills CT_Fills */
+    if ((t = data.match(fillsRegex))) parse_fills(t, opts);
 
-	/* 18.8.5  borders CT_Borders ? */
-	if((t=data.match(bordersRegex))) parse_borders(t, styles, themes, opts);
+    /* borders CT_Borders ? */
+    if ((t = data.match(bordersRegex))) parse_borders(t, opts);
+    /* cellStyleXfs CT_CellStyleXfs ? */
 
-	/* 18.8.9  cellStyleXfs CT_CellStyleXfs ? */
+    /* cellXfs CT_CellXfs ? */
+    if ((t = data.match(cellXfRegex))) parse_cellXfs(t, opts);
 
-	/* 18.8.10 cellXfs CT_CellXfs ? */
-	if((t=data.match(cellXfRegex))) parse_cellXfs(t, styles, opts);
+    /* dxfs CT_Dxfs ? */
+    /* tableStyles CT_TableStyles ? */
+    /* colors CT_Colors ? */
+    /* extLst CT_ExtensionList ? */
 
-	/* 18.8.8  cellStyles CT_CellStyles ? */
-	/* 18.8.15 dxfs CT_Dxfs ? */
-	/* 18.8.42 tableStyles CT_TableStyles ? */
-	/* 18.8.11 colors CT_Colors ? */
-	/* 18.2.10 extLst CT_ExtensionList ? */
-
-	return styles;
-};
+    return styles;
+  };
 })();
 
 var STYLES_XML_ROOT = writextag('styleSheet', null, {
-	'xmlns': XMLNS.main[0],
-	'xmlns:vt': XMLNS.vt
+  'xmlns': XMLNS.main[0],
+  'xmlns:vt': XMLNS.vt
 });
 
 RELS.STY = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
 
-function write_sty_xml(wb, opts) {
-	var o = [XML_HEADER, STYLES_XML_ROOT], w;
-	if(wb.SSF && (w = write_numFmts(wb.SSF)) != null) o[o.length] = w;
-	o[o.length] = ('<fonts count="1"><font><sz val="12"/><color theme="1"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts>');
-	o[o.length] = ('<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>');
-	o[o.length] = ('<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>');
-	o[o.length] = ('<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>');
-	if((w = write_cellXfs(opts.cellXfs))) o[o.length] = (w);
-	o[o.length] = ('<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>');
-	o[o.length] = ('<dxfs count="0"/>');
-	o[o.length] = ('<tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleMedium4"/>');
 
-	if(o.length>2){ o[o.length] = ('</styleSheet>'); o[1]=o[1].replace("/>",">"); }
-	return o.join("");
+function write_sty_xml(wb, opts) {
+  if (typeof style_builder != 'undefined' && typeof 'require' != 'undefined') {
+    return style_builder.toXml();
+  }
+
+  var o = [XML_HEADER, STYLES_XML_ROOT], w;
+  if ((w = write_numFmts(wb.SSF)) != null) o[o.length] = w;
+  o[o.length] = ('<fonts count="1"><font><sz val="12"/><color theme="1"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font></fonts>');
+  o[o.length] = ('<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>');
+  o[o.length] = ('<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>');
+  o[o.length] = ('<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>');
+  if ((w = write_cellXfs(opts.cellXfs))) o[o.length] = (w);
+  o[o.length] = ('<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>');
+  o[o.length] = ('<dxfs count="0"/>');
+  o[o.length] = ('<tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleMedium4"/>');
+
+  if (o.length > 2) {
+    o[o.length] = ('</styleSheet>');
+    o[1] = o[1].replace("/>", ">");
+  }
+  return o.join("");
 }
+
 RELS.THEME = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
 
 /* 20.1.6.2 clrScheme CT_ColorScheme */
@@ -5350,6 +5437,11 @@ function parse_theme_xml(data, opts) {
 }
 
 function write_theme(Themes, opts) {
+	return _HEAD_write_theme(Themes, opts);
+	//return _MERGE_write_theme(Themes, opts);
+}
+
+function _HEAD_write_theme(Themes, opts) {
 	if(opts && opts.themeXLSX) return opts.themeXLSX;
 	var o = [XML_HEADER];
 	o[o.length] = '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme">';
@@ -5519,6 +5611,13 @@ function write_theme(Themes, opts) {
 	o[o.length] = '</a:theme>';
 	return o.join("");
 }
+
+//function write_theme() { return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Cambria"/><a:ea typeface=""/><a:cs typeface=""/><a:font script="Jpan" typeface="ＭＳ Ｐゴシック"/><a:font script="Hang" typeface="맑은 고딕"/><a:font script="Hans" typeface="宋体"/><a:font script="Hant" typeface="新細明體"/><a:font script="Arab" typeface="Times New Roman"/><a:font script="Hebr" typeface="Times New Roman"/><a:font script="Thai" typeface="Tahoma"/><a:font script="Ethi" typeface="Nyala"/><a:font script="Beng" typeface="Vrinda"/><a:font script="Gujr" typeface="Shruti"/><a:font script="Khmr" typeface="MoolBoran"/><a:font script="Knda" typeface="Tunga"/><a:font script="Guru" typeface="Raavi"/><a:font script="Cans" typeface="Euphemia"/><a:font script="Cher" typeface="Plantagenet Cherokee"/><a:font script="Yiii" typeface="Microsoft Yi Baiti"/><a:font script="Tibt" typeface="Microsoft Himalaya"/><a:font script="Thaa" typeface="MV Boli"/><a:font script="Deva" typeface="Mangal"/><a:font script="Telu" typeface="Gautami"/><a:font script="Taml" typeface="Latha"/><a:font script="Syrc" typeface="Estrangelo Edessa"/><a:font script="Orya" typeface="Kalinga"/><a:font script="Mlym" typeface="Kartika"/><a:font script="Laoo" typeface="DokChampa"/><a:font script="Sinh" typeface="Iskoola Pota"/><a:font script="Mong" typeface="Mongolian Baiti"/><a:font script="Viet" typeface="Times New Roman"/><a:font script="Uigh" typeface="Microsoft Uighur"/><a:font script="Geor" typeface="Sylfaen"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/><a:font script="Jpan" typeface="ＭＳ Ｐゴシック"/><a:font script="Hang" typeface="맑은 고딕"/><a:font script="Hans" typeface="宋体"/><a:font script="Hant" typeface="新細明體"/><a:font script="Arab" typeface="Arial"/><a:font script="Hebr" typeface="Arial"/><a:font script="Thai" typeface="Tahoma"/><a:font script="Ethi" typeface="Nyala"/><a:font script="Beng" typeface="Vrinda"/><a:font script="Gujr" typeface="Shruti"/><a:font script="Khmr" typeface="DaunPenh"/><a:font script="Knda" typeface="Tunga"/><a:font script="Guru" typeface="Raavi"/><a:font script="Cans" typeface="Euphemia"/><a:font script="Cher" typeface="Plantagenet Cherokee"/><a:font script="Yiii" typeface="Microsoft Yi Baiti"/><a:font script="Tibt" typeface="Microsoft Himalaya"/><a:font script="Thaa" typeface="MV Boli"/><a:font script="Deva" typeface="Mangal"/><a:font script="Telu" typeface="Gautami"/><a:font script="Taml" typeface="Latha"/><a:font script="Syrc" typeface="Estrangelo Edessa"/><a:font script="Orya" typeface="Kalinga"/><a:font script="Mlym" typeface="Kartika"/><a:font script="Laoo" typeface="DokChampa"/><a:font script="Sinh" typeface="Iskoola Pota"/><a:font script="Mong" typeface="Mongolian Baiti"/><a:font script="Viet" typeface="Arial"/><a:font script="Uigh" typeface="Microsoft Uighur"/><a:font script="Geor" typeface="Sylfaen"/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="50000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="35000"><a:schemeClr val="phClr"><a:tint val="37000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:tint val="15000"/><a:satMod val="350000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="16200000" scaled="1"/></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="100000"/><a:shade val="100000"/><a:satMod val="130000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:tint val="50000"/><a:shade val="100000"/><a:satMod val="350000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="16200000" scaled="0"/></a:gradFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"><a:shade val="95000"/><a:satMod val="105000"/></a:schemeClr></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="25400" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="38100" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="20000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="38000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="23000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="35000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="23000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="35000"/></a:srgbClr></a:outerShdw></a:effectLst><a:scene3d><a:camera prst="orthographicFront"><a:rot lat="0" lon="0" rev="0"/></a:camera><a:lightRig rig="threePt" dir="t"><a:rot lat="0" lon="0" rev="1200000"/></a:lightRig></a:scene3d><a:sp3d><a:bevelT w="63500" h="25400"/></a:sp3d></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="40000"/><a:satMod val="350000"/></a:schemeClr></a:gs><a:gs pos="40000"><a:schemeClr val="phClr"><a:tint val="45000"/><a:shade val="99000"/><a:satMod val="350000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="20000"/><a:satMod val="255000"/></a:schemeClr></a:gs></a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="-80000" r="50000" b="180000"/></a:path></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="80000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="30000"/><a:satMod val="200000"/></a:schemeClr></a:gs></a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path></a:gradFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults><a:spDef><a:spPr/><a:bodyPr/><a:lstStyle/><a:style><a:lnRef idx="1"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="3"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="2"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></a:style></a:spDef><a:lnDef><a:spPr/><a:bodyPr/><a:lstStyle/><a:style><a:lnRef idx="2"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="0"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="1"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="tx1"/></a:fontRef></a:style></a:lnDef></a:objectDefaults><a:extraClrSchemeLst/></a:theme>'; }
+function _MERGE_write_theme(opts) {
+  if (opts.themeXml) { return opts.themeXml; }
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Office Theme"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Cambria"/><a:ea typeface=""/><a:cs typeface=""/><a:font script="Jpan" typeface="ＭＳ Ｐゴシック"/><a:font script="Hang" typeface="맑은 고딕"/><a:font script="Hans" typeface="宋体"/><a:font script="Hant" typeface="新細明體"/><a:font script="Arab" typeface="Times New Roman"/><a:font script="Hebr" typeface="Times New Roman"/><a:font script="Thai" typeface="Tahoma"/><a:font script="Ethi" typeface="Nyala"/><a:font script="Beng" typeface="Vrinda"/><a:font script="Gujr" typeface="Shruti"/><a:font script="Khmr" typeface="MoolBoran"/><a:font script="Knda" typeface="Tunga"/><a:font script="Guru" typeface="Raavi"/><a:font script="Cans" typeface="Euphemia"/><a:font script="Cher" typeface="Plantagenet Cherokee"/><a:font script="Yiii" typeface="Microsoft Yi Baiti"/><a:font script="Tibt" typeface="Microsoft Himalaya"/><a:font script="Thaa" typeface="MV Boli"/><a:font script="Deva" typeface="Mangal"/><a:font script="Telu" typeface="Gautami"/><a:font script="Taml" typeface="Latha"/><a:font script="Syrc" typeface="Estrangelo Edessa"/><a:font script="Orya" typeface="Kalinga"/><a:font script="Mlym" typeface="Kartika"/><a:font script="Laoo" typeface="DokChampa"/><a:font script="Sinh" typeface="Iskoola Pota"/><a:font script="Mong" typeface="Mongolian Baiti"/><a:font script="Viet" typeface="Times New Roman"/><a:font script="Uigh" typeface="Microsoft Uighur"/><a:font script="Geor" typeface="Sylfaen"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/><a:font script="Jpan" typeface="ＭＳ Ｐゴシック"/><a:font script="Hang" typeface="맑은 고딕"/><a:font script="Hans" typeface="宋体"/><a:font script="Hant" typeface="新細明體"/><a:font script="Arab" typeface="Arial"/><a:font script="Hebr" typeface="Arial"/><a:font script="Thai" typeface="Tahoma"/><a:font script="Ethi" typeface="Nyala"/><a:font script="Beng" typeface="Vrinda"/><a:font script="Gujr" typeface="Shruti"/><a:font script="Khmr" typeface="DaunPenh"/><a:font script="Knda" typeface="Tunga"/><a:font script="Guru" typeface="Raavi"/><a:font script="Cans" typeface="Euphemia"/><a:font script="Cher" typeface="Plantagenet Cherokee"/><a:font script="Yiii" typeface="Microsoft Yi Baiti"/><a:font script="Tibt" typeface="Microsoft Himalaya"/><a:font script="Thaa" typeface="MV Boli"/><a:font script="Deva" typeface="Mangal"/><a:font script="Telu" typeface="Gautami"/><a:font script="Taml" typeface="Latha"/><a:font script="Syrc" typeface="Estrangelo Edessa"/><a:font script="Orya" typeface="Kalinga"/><a:font script="Mlym" typeface="Kartika"/><a:font script="Laoo" typeface="DokChampa"/><a:font script="Sinh" typeface="Iskoola Pota"/><a:font script="Mong" typeface="Mongolian Baiti"/><a:font script="Viet" typeface="Arial"/><a:font script="Uigh" typeface="Microsoft Uighur"/><a:font script="Geor" typeface="Sylfaen"/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="50000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="35000"><a:schemeClr val="phClr"><a:tint val="37000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:tint val="15000"/><a:satMod val="350000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="16200000" scaled="1"/></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="100000"/><a:shade val="100000"/><a:satMod val="130000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:tint val="50000"/><a:shade val="100000"/><a:satMod val="350000"/></a:schemeClr></a:gs></a:gsLst><a:lin ang="16200000" scaled="0"/></a:gradFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"><a:shade val="95000"/><a:satMod val="105000"/></a:schemeClr></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="25400" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln><a:ln w="38100" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="20000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="38000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="23000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="35000"/></a:srgbClr></a:outerShdw></a:effectLst></a:effectStyle><a:effectStyle><a:effectLst><a:outerShdw blurRad="40000" dist="23000" dir="5400000" rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="35000"/></a:srgbClr></a:outerShdw></a:effectLst><a:scene3d><a:camera prst="orthographicFront"><a:rot lat="0" lon="0" rev="0"/></a:camera><a:lightRig rig="threePt" dir="t"><a:rot lat="0" lon="0" rev="1200000"/></a:lightRig></a:scene3d><a:sp3d><a:bevelT w="63500" h="25400"/></a:sp3d></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="40000"/><a:satMod val="350000"/></a:schemeClr></a:gs><a:gs pos="40000"><a:schemeClr val="phClr"><a:tint val="45000"/><a:shade val="99000"/><a:satMod val="350000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="20000"/><a:satMod val="255000"/></a:schemeClr></a:gs></a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="-80000" r="50000" b="180000"/></a:path></a:gradFill><a:gradFill rotWithShape="1"><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"><a:tint val="80000"/><a:satMod val="300000"/></a:schemeClr></a:gs><a:gs pos="100000"><a:schemeClr val="phClr"><a:shade val="30000"/><a:satMod val="200000"/></a:schemeClr></a:gs></a:gsLst><a:path path="circle"><a:fillToRect l="50000" t="50000" r="50000" b="50000"/></a:path></a:gradFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults><a:spDef><a:spPr/><a:bodyPr/><a:lstStyle/><a:style><a:lnRef idx="1"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="3"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="2"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></a:style></a:spDef><a:lnDef><a:spPr/><a:bodyPr/><a:lstStyle/><a:style><a:lnRef idx="2"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="0"><a:schemeClr val="accent1"/></a:fillRef><a:effectRef idx="1"><a:schemeClr val="accent1"/></a:effectRef><a:fontRef idx="minor"><a:schemeClr val="tx1"/></a:fontRef></a:style></a:lnDef></a:objectDefaults><a:extraClrSchemeLst/></a:theme>';
+}
+
 /* 18.14 Supplementary Workbook Data */
 function parse_xlink_xml() {
 	//var opts = _opts || {};
@@ -5887,27 +5986,83 @@ function default_margins(margins, mode) {
 }
 
 function get_cell_style(styles, cell, opts) {
-	var z = opts.revssf[cell.z != null ? cell.z : "General"];
-	var i = 0x3c, len = styles.length;
-	if(z == null && opts.ssf) {
-		for(; i < 0x188; ++i) if(opts.ssf[i] == null) {
-			SSF.load(cell.z, i);
-			// $FlowIgnore
-			opts.ssf[i] = cell.z;
-			opts.revssf[cell.z] = z = i;
-			break;
-		}
-	}
-	for(i = 0; i != len; ++i) if(styles[i].numFmtId === z) return i;
-	styles[len] = {
-		numFmtId:z,
-		fontId:0,
-		fillId:0,
-		borderId:0,
-		xfId:0,
-		applyNumberFormat:1
-	};
-	return len;
+  return _MERGE_get_cell_style(styles, cell, opts);
+}
+
+function _HEAD_get_cell_style(styles, cell, opts) {
+  var z = opts.revssf[cell.z != null ? cell.z : "General"];
+  var i = 0x3c, len = styles.length;
+  if (z == null && opts.ssf) {
+    for (; i < 0x188; ++i) if (opts.ssf[i] == null) {
+      SSF.load(cell.z, i);
+      // $FlowIgnore
+      opts.ssf[i] = cell.z;
+      opts.revssf[cell.z] = z = i;
+      break;
+    }
+  }
+  for (i = 0; i != len; ++i) if (styles[i].numFmtId === z) return i;
+  styles[len] = {
+    numFmtId: z,
+    fontId: 0,
+    fillId: 0,
+    borderId: 0,
+    xfId: 0,
+    applyNumberFormat: 1
+  };
+  return len;
+}
+function _MERGE_get_cell_style(styles, cell, opts) {
+  if (typeof style_builder != 'undefined') {
+    if (/^\d+$/.exec(cell.s)) { return cell.s}  // if its already an integer index, let it be
+    if (cell.s && (cell.s == +cell.s)) { return cell.s}  // if its already an integer index, let it be
+    var s = cell.s || {};
+    if (cell.z) s.numFmt = cell.z;
+    return style_builder.addStyle(s);
+  }
+  else {
+    var z = opts.revssf[cell.z != null ? cell.z : "General"];
+    for(var i = 0, len = styles.length; i != len; ++i) if(styles[i].numFmtId === z) return i;
+    styles[len] = {
+      numFmtId:z,
+      fontId:0,
+      fillId:0,
+      borderId:0,
+      xfId:0,
+      applyNumberFormat:1
+    };
+    return len;
+  }
+}
+
+function get_cell_style_csf(cellXf) {
+
+  if (cellXf) {
+
+    var s = {}
+
+    if (typeof cellXf.numFmtId != undefined)  {
+      s.numFmt = SSF._table[cellXf.numFmtId];
+    }
+
+    if(cellXf.fillId)  {
+      s.fill =  styles.Fills[cellXf.fillId];
+    }
+
+    if (cellXf.fontId) {
+      s.font = styles.Fonts[cellXf.fontId];
+    }
+    if (cellXf.borderId) {
+      s.border = styles.Borders[cellXf.borderId];
+    }
+    if (cellXf.applyAlignment==1) {
+      s.alignment = cellXf.alignment;
+    }
+
+
+    return JSON.parse(JSON.stringify(s));
+  }
+  return null;
 }
 
 function safe_format(p, fmtid, fillid, opts, themes, styles) {
@@ -5935,6 +6090,7 @@ function safe_format(p, fmtid, fillid, opts, themes, styles) {
 		else if(p.t === 'd') p.w = SSF.format(fmtid,datenum(p.v),_ssfopts);
 		else p.w = SSF.format(fmtid,p.v,_ssfopts);
 	} catch(e) { if(opts.WTF) throw e; }
+
 	if(!opts.cellStyles) return;
 	if(fillid != null) try {
 		p.s = styles.Fills[fillid];
@@ -5957,7 +6113,7 @@ function check_ws(ws, sname, i) {
 }
 function parse_ws_xml_dim(ws, s) {
 	var d = safe_decode_range(s);
-	if(d.s.r<=d.e.r && d.s.c<=d.e.c && d.s.r>=0 && d.s.c>=0) ws["!ref"] = encode_range(d);
+	if(d.s.r <= d.e.r && d.s.c <= d.e.c && d.s.r >= 0 && d.s.c >= 0) ws["!ref"] = encode_range(d);
 }
 var mergecregex = /<(?:\w:)?mergeCell ref="[A-Z0-9:]+"\s*[\/]?>/g;
 var sheetdataregex = /<(?:\w+:)?sheetData[^>]*>([\s\S]*)<\/(?:\w+:)?sheetData>/;
@@ -5969,6 +6125,7 @@ var marginregex= /<(?:\w:)?pageMargins[^>]*\/>/g;
 var sheetprregex = /<(?:\w:)?sheetPr\b(?:[^>a-z][^>]*)?\/>/;
 var svsregex = /<(?:\w:)?sheetViews[^>]*(?:[\/]|>([\s\S]*)<\/(?:\w:)?sheetViews)>/;
 /* 18.3 Worksheets */
+
 function parse_ws_xml(data, opts, idx, rels, wb, themes, styles) {
 	if(!data) return data;
 	if(DENSE != null && opts.dense == null) opts.dense = DENSE;
@@ -6054,6 +6211,16 @@ function write_ws_xml_merges(merges) {
 	return o + '</mergeCells>';
 }
 
+function write_ws_xml_pagesetup(setup) {
+	var pageSetup = writextag('pageSetup', null, {
+		scale: setup.scale || '100',
+		orientation: setup.orientation || 'portrait',
+		horizontalDpi: setup.horizontalDpi || '4294967292',
+		verticalDpi: setup.verticalDpi || '4294967292'
+	})
+	return pageSetup;
+}
+
 /* 18.3.1.82-3 sheetPr CT_ChartsheetPr / CT_SheetPr */
 function parse_ws_xml_sheetpr(sheetPr, s, wb, idx) {
 	var data = parsexmltag(sheetPr);
@@ -6133,7 +6300,6 @@ function parse_ws_xml_cols(columns, cols) {
 		while(colm <= colM) columns[colm++] = dup(coll);
 	}
 }
-
 function write_ws_xml_cols(ws, cols) {
 	var o = ["<cols>"], col;
 	for(var i = 0; i != cols.length; ++i) {
@@ -6430,8 +6596,8 @@ function write_ws_xml_data(ws, opts, idx, wb) {
 }
 
 var WS_XML_ROOT = writextag('worksheet', null, {
-	'xmlns': XMLNS.main[0],
-	'xmlns:r': XMLNS.r
+  'xmlns': XMLNS.main[0],
+  'xmlns:r': XMLNS.r
 });
 
 function write_ws_xml(idx, opts, wb, rels) {
@@ -6553,6 +6719,25 @@ function write_ws_xml(idx, opts, wb, rels) {
 
 	if(o.length>2) { o[o.length] = ('</worksheet>'); o[1]=o[1].replace("/>",">"); }
 	return o.join("");
+}
+
+function write_ws_xml_row_breaks(breaks) {
+	var brk = [];
+	for (var i = 0; i < breaks.length; i++) {
+		var thisBreak = '' + (breaks[i]);
+		var nextBreak = '' + (breaks[i + 1] || '16383');
+		brk.push(writextag('brk', null, {id: thisBreak, max: nextBreak, man: '1'}))
+	}
+	return writextag('rowBreaks', brk.join(' '), {count: brk.length, manualBreakCount: brk.length})
+}
+function write_ws_xml_col_breaks(breaks) {
+	var brk = [];
+	for (var i = 0; i < breaks.length; i++) {
+		var thisBreak = '' + (breaks[i]);
+		var nextBreak = '' + (breaks[i + 1] || '1048575');
+		brk.push(writextag('brk', null, {id: thisBreak, max: nextBreak, man: '1'}))
+	}
+	return writextag('colBreaks', brk.join(' '), {count: brk.length, manualBreakCount: brk.length})
 }
 function parse_numCache(data) {
 	var col = [];
@@ -7499,9 +7684,15 @@ function parse_zip(zip, opts) {
 		strs = [];
 		if(dir.sst) try { strs=parse_sst(getzipdata(zip, strip_front_slash(dir.sst)), dir.sst, opts); } catch(e) { if(opts.WTF) throw e; }
 
-		if(opts.cellStyles && dir.themes.length) themes = parse_theme(getzipstr(zip, dir.themes[0].replace(/^\//,''), true)||"",dir.themes[0], opts);
+    // parse themes before styles so that we can reliably decode theme/tint into rgb when parsing styles
+    themes = {};
+		// - _HEAD version:
+		//if(opts.cellStyles && dir.themes.length) themes = parse_theme(getzipstr(zip, dir.themes[0].replace(/^\//,''), true)||"",dir.themes[0], opts);
+		// - _MERGE version:
+    if(opts.cellStyles && dir.themes.length) themes = parse_theme(getzipdata(zip, dir.themes[0].replace(/^\//,''), true),dir.themes[0], opts);
 
-		if(dir.style) styles = parse_sty(getzipdata(zip, strip_front_slash(dir.style)), dir.style, themes, opts);
+    styles = {};
+		if(dir.style) styles = parse_sty(getzipdata(zip, dir.style.replace(/^\//,'')),dir.style, opts);
 	}
 
 	/*var externbooks = */dir.links.map(function(link) {
@@ -7757,7 +7948,11 @@ f = "docProps/app.xml";
 	/* TODO: something more intelligent with themes */
 
 	f = "xl/theme/theme1.xml";
-	zip_add_file(zip, f, write_theme(wb.Themes, opts));
+	// - _HEAD:
+	//zip_add_file(zip, f, write_theme(wb.Themes, opts));
+	// - _MERGE:
+  zip.file(f, write_theme(opts));
+
 	ct.themes.push(f);
 	add_rels(opts.wbrels, -1, "theme/theme1.xml", RELS.THEME);
 
@@ -7882,8 +8077,19 @@ function readSync(data, opts) {
 }
 
 function readFileSync(filename, opts) {
-	var o = opts||{}; o.type = 'file';
+	return _MERGE_readFileSync(filename, opts);
+}
+
+function _HEAD_readFileSync(filename, opts) {
+	var o = opts || {};
+	o.type = 'file';
 	return readSync(filename, o);
+}
+function _MERGE_readFileSync(data, opts) {
+	var o = opts||{}; o.type = 'file'
+  var wb = readSync(data, o);
+  wb.FILENAME = data;
+	return wb;
 }
 function write_cfb_ctr(cfb, o) {
 	switch(o.type) {
@@ -7898,6 +8104,9 @@ function write_cfb_ctr(cfb, o) {
 
 /*global encrypt_agile */
 function write_zip_type(wb, opts) {
+	return _MERGE_write_zip_type(wb, opts);
+}
+function _HEAD_write_zip_type(wb, opts) {
 	var o = opts||{};
 	var z = write_zip(wb, o);
 	var oopts = {};
@@ -7915,6 +8124,24 @@ function write_zip_type(wb, opts) {
 	if(o.password && typeof encrypt_agile !== 'undefined') return write_cfb_ctr(encrypt_agile(out, o.password), o);
 	if(o.type === "file") return write_dl(o.file, out);
 	return o.type == "string" ? utf8read(out) : out;
+}
+
+
+	function _MERGE_write_zip_type(wb, opts) {
+		var o = opts||{};
+		style_builder  = new StyleBuilder(opts);
+		var z = write_zip(wb, o);
+		switch(o.type) {
+			case "base64": return z.generate({type:"base64"});
+			case "binary": return z.generate({type:"string"});
+			case "buffer": return z.generate({type:"nodebuffer"});
+			case "file": return _fs.writeFileSync(o.file, z.generate({type:"nodebuffer"}));
+			default: throw new Error("Unrecognized type " + o.type);
+		}
+		var out = z.FullPaths ? CFB.write(z, {fileType:"zip", type: {"nodebuffer": "buffer", "string": "binary"}[oopts.type] || oopts.type}) : z.generate(oopts);
+		if(o.password && typeof encrypt_agile !== 'undefined') return write_cfb_ctr(encrypt_agile(out, o.password), o);
+		if(o.type === "file") return write_dl(o.file, out);
+		return o.type == "string" ? utf8read(out) : out;
 }
 
 function write_cfb_type(wb, opts) {
@@ -8022,6 +8249,7 @@ function resolve_book_type(o) {
 
 function writeFileSync(wb, filename, opts) {
 	var o = opts||{}; o.type = 'file';
+
 	o.file = filename;
 	resolve_book_type(o);
 	return writeSync(wb, o);
@@ -8288,7 +8516,6 @@ var utils = {
 	sheet_to_formulae: sheet_to_formulae,
 	sheet_to_row_object_array: sheet_to_json
 };
-
 (function(utils) {
 utils.consts = utils.consts || {};
 function add_consts(R/*Array<any>*/) { R.forEach(function(a){ utils.consts[a[0]] = a[1]; }); }
